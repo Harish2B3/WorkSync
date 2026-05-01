@@ -33,7 +33,9 @@ export const signup = async (req: Request, res: Response) => {
 
     if (recentOtps.length > 0) {
       const lastSent = new Date(recentOtps[0].createdAt).getTime();
-      if (Date.now() - lastSent < RESEND_COOLDOWN_MS) {
+      const elapsed = Date.now() - lastSent;
+      if (elapsed < RESEND_COOLDOWN_MS) {
+        console.warn(`[AUTH] OTP request blocked for ${email}. Cooldown in effect: ${Math.round((RESEND_COOLDOWN_MS - elapsed)/1000)}s remaining.`);
         return res.status(429).json({ error: 'Please wait before requesting another OTP.' });
       }
     }
@@ -131,7 +133,9 @@ export const login = async (req: Request, res: Response) => {
 
     if (recentOtps.length > 0) {
       const lastSent = new Date(recentOtps[0].createdAt).getTime();
-      if (Date.now() - lastSent < RESEND_COOLDOWN_MS) {
+      const elapsed = Date.now() - lastSent;
+      if (elapsed < RESEND_COOLDOWN_MS) {
+        console.warn(`[AUTH] Login OTP blocked for ${email}. Cooldown in effect: ${Math.round((RESEND_COOLDOWN_MS - elapsed)/1000)}s remaining.`);
         return res.status(429).json({ error: 'Please wait before requesting another OTP.' });
       }
     }
