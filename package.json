@@ -7,9 +7,9 @@
     "dev": "vite",
     "dev:server": "tsx server.ts",
     "build": "vite build",
-    "start": "cross-env NODE_ENV=production node server.cjs",
+    "start": "npm run build:server && cross-env NODE_ENV=production node server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "build:server": "esbuild server.ts --bundle --platform=node --target=node18 --format=cjs --packages=external --outfile=server.cjs"
   },
