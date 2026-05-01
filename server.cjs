@@ -35,7 +35,11 @@ var import_jsonwebtoken = __toESM(require("jsonwebtoken"), 1);
 var import_promise = __toESM(require("mysql2/promise"), 1);
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
-var pool = import_promise.default.createPool(process.env.DATABASE_URL || "");
+if (!process.env.DATABASE_URL) {
+  console.error("CRITICAL ERROR: DATABASE_URL is not defined in environment variables.");
+  process.exit(1);
+}
+var pool = import_promise.default.createPool(process.env.DATABASE_URL);
 var db_default = pool;
 
 // backend/controllers/authController.ts
@@ -43,25 +47,30 @@ var import_uuid = require("uuid");
 var JWT_SECRET = process.env.JWT_SECRET || "super-secret-key";
 var signup = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    // Validation
-    if (!name || !name.trim()) return res.status(400).json({ error: "Name is required" });
-    if (!email || email.indexOf("@") === -1) return res.status(400).json({ error: "Valid email is required" });
-    if (!password || password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
-    const [existingUsers] = await db_default.query("SELECT id FROM User WHERE email = ?", [email.toLowerCase().trim()]);
-    if (existingUsers.length > 0) return res.status(400).json({ error: "An account with this email already exists" });
+    const { name, email, password, role } = req.body;
+    console.log(`Signup attempt: ${email}, Role: ${role}`);
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Name, email, and password are required" });
+    }
+    if (email.indexOf("@") === -1) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+    const [existingUsers] = await db_default.query("SELECT * FROM User WHERE email = ?", [email]);
+    if (existingUsers.length > 0) return res.status(400).json({ error: "User already exists" });
     const hashedPassword = await import_bcryptjs.default.hash(password, 10);
-    // SECURITY: role is ALWAYS forced to 'member' on public signup
-    const userRole = "member";
+    const userRole = role || "member";
     const id = (0, import_uuid.v4)();
     await db_default.query(
       "INSERT INTO User (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)",
-      [id, name.trim(), email.toLowerCase().trim(), hashedPassword, userRole]
+      [id, name, email, hashedPassword, userRole]
     );
-    const token = import_jsonwebtoken.default.sign({ id, email: email.toLowerCase().trim(), role: userRole, name: name.trim() }, JWT_SECRET, { expiresIn: "1d" });
+    const token = import_jsonwebtoken.default.sign({ id, email, role: userRole, name }, JWT_SECRET, { expiresIn: "1d" });
     res.status(201).json({
       token,
-      user: { id, name: name.trim(), email: email.toLowerCase().trim(), role: userRole }
+      user: { id, name, email, role: userRole }
     });
   } catch (error) {
     console.error(error);
@@ -147,9 +156,6 @@ var getProjects = async (req, res) => {
 var createProject = async (req, res) => {
   try {
     const { name, description } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: "Project name is required" });
-    }
     let { color } = req.body;
     const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f59e0b", "#10b981", "#06b6d4", "#3b82f6"];
     if (!color) {
@@ -159,7 +165,7 @@ var createProject = async (req, res) => {
     const pinned = 0;
     await db_default.query(
       "INSERT INTO Project (id, name, description, color, pinned) VALUES (?, ?, ?, ?, ?)",
-      [id, name.trim(), description || "", color, pinned]
+      [id, name, description, color, pinned]
     );
     const [rows] = await db_default.query("SELECT * FROM Project WHERE id = ?", [id]);
     res.status(201).json(rows[0]);
@@ -232,31 +238,11 @@ var getTasks = async (req, res) => {
 var createTask = async (req, res) => {
   try {
     const { title, description, dueDate, projectId, assignedToId } = req.body;
-    // Validate required fields
-    if (!title || !title.trim()) {
-      return res.status(400).json({ error: "Task title is required" });
-    }
-    if (!projectId) {
-      return res.status(400).json({ error: "A project must be selected for this task" });
-    }
-    // Verify project exists
-    const [projectRows] = await db_default.query("SELECT id FROM Project WHERE id = ?", [projectId]);
-    if (projectRows.length === 0) {
-      return res.status(400).json({ error: "Selected project does not exist" });
-    }
-    // Verify assigned user exists (if provided)
-    const safeAssignedId = assignedToId && assignedToId.trim() !== "" ? assignedToId : null;
-    if (safeAssignedId) {
-      const [userRows] = await db_default.query("SELECT id FROM User WHERE id = ?", [safeAssignedId]);
-      if (userRows.length === 0) {
-        return res.status(400).json({ error: "Assigned user does not exist" });
-      }
-    }
     const id = (0, import_uuid3.v4)();
     const status = "pending";
     await db_default.query(
       "INSERT INTO Task (id, title, description, dueDate, status, projectId, assignedToId) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, title.trim(), description || "", dueDate || null, status, projectId, safeAssignedId]
+      [id, title, description, dueDate, status, projectId, assignedToId || null]
     );
     const [rows] = await db_default.query("SELECT * FROM Task WHERE id = ?", [id]);
     res.status(201).json(rows[0]);
@@ -272,33 +258,17 @@ var updateTask = async (req, res) => {
     const [tasks] = await db_default.query("SELECT * FROM Task WHERE id = ?", [id]);
     const task = tasks[0];
     if (!task) return res.status(404).json({ error: "Task not found" });
-    // Members can ONLY update status on their own tasks
-    if (req.user.role === "member") {
-      if (task.assignedToId !== req.user.id) {
-        return res.status(403).json({ error: "You can only update tasks assigned to you" });
-      }
-      if (title !== undefined || description !== undefined || dueDate !== undefined || assignedToId !== undefined) {
-        return res.status(403).json({ error: "Members can only update task status" });
-      }
-      // Validate status value
-      const validStatuses = ["pending", "in_progress", "completed"];
-      const normalizedStatus = status === "in-progress" ? "in_progress" : status;
-      if (!validStatuses.includes(normalizedStatus)) {
-        return res.status(400).json({ error: "Invalid status value" });
-      }
-      await db_default.query("UPDATE Task SET status = ? WHERE id = ?", [normalizedStatus, id]);
-      const [rows] = await db_default.query("SELECT * FROM Task WHERE id = ?", [id]);
-      return res.json(rows[0]);
+    if (req.user.role === "member" && task.assignedToId !== req.user.id) {
+      return res.status(403).json({ error: "Unauthorized to update this task" });
     }
-    // Admin can update all fields
-    const safeAssignedId = assignedToId !== undefined ? (assignedToId && assignedToId.trim() !== "" ? assignedToId : null) : task.assignedToId;
-    const updatedStatus = status === "in-progress" ? "in_progress" : status !== undefined ? status : task.status;
-    const updatedTitle = title !== undefined ? title : task.title;
-    const updatedDesc = description !== undefined ? description : task.description;
-    const updatedDueDate = dueDate !== undefined ? dueDate : task.dueDate;
+    const updatedStatus = status === "in-progress" ? "in_progress" : status !== void 0 ? status : task.status;
+    const updatedTitle = title !== void 0 ? title : task.title;
+    const updatedDesc = description !== void 0 ? description : task.description;
+    const updatedDueDate = dueDate !== void 0 ? dueDate : task.dueDate;
+    const updatedAssigned = assignedToId !== void 0 ? assignedToId : task.assignedToId;
     await db_default.query(
       "UPDATE Task SET status = ?, title = ?, description = ?, dueDate = ?, assignedToId = ? WHERE id = ?",
-      [updatedStatus, updatedTitle, updatedDesc, updatedDueDate, safeAssignedId, id]
+      [updatedStatus, updatedTitle, updatedDesc, updatedDueDate, updatedAssigned || null, id]
     );
     const [rows] = await db_default.query("SELECT * FROM Task WHERE id = ?", [id]);
     res.json(rows[0]);
@@ -329,12 +299,7 @@ var deleteTask = async (req, res) => {
 var import_uuid4 = require("uuid");
 var getUsers = async (req, res) => {
   try {
-    // Non-admins only see other members (not admin accounts)
-    let query = "SELECT id, name, email, role FROM User";
-    if (req.user.role !== "admin") {
-      query += " WHERE role = 'member'";
-    }
-    const [users] = await db_default.query(query);
+    const [users] = await db_default.query("SELECT id, name, email, role FROM User");
     res.json(users);
   } catch (error) {
     console.error(error);
@@ -372,29 +337,6 @@ var createCollaboration = async (req, res) => {
   try {
     const { userId, collaboratedWithId, leaderName } = req.body;
     const targetId = collaboratedWithId || userId;
-    if (!targetId) {
-      return res.status(400).json({ error: "Target user ID is required" });
-    }
-    // Prevent self-invitation
-    if (targetId === req.user.id) {
-      return res.status(400).json({ error: "You cannot invite yourself" });
-    }
-    // Verify target user exists and is a member (not admin)
-    const [targetUsers] = await db_default.query("SELECT id, role FROM User WHERE id = ?", [targetId]);
-    if (targetUsers.length === 0) {
-      return res.status(400).json({ error: "Target user not found" });
-    }
-    if (targetUsers[0].role === "admin") {
-      return res.status(403).json({ error: "Cannot invite an admin to a team" });
-    }
-    // Prevent duplicate invitations
-    const [existing] = await db_default.query(
-      "SELECT id FROM Collaboration WHERE userId = ? AND collaboratedWithId = ?",
-      [req.user.id, targetId]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json({ error: "An invitation already exists for this user" });
-    }
     const id = (0, import_uuid4.v4)();
     const status = "pending";
     await db_default.query(
@@ -411,12 +353,6 @@ var createCollaboration = async (req, res) => {
 var acceptCollaboration = async (req, res) => {
   try {
     const { id } = req.params;
-    // Verify the invite is for this user
-    const [invites] = await db_default.query("SELECT * FROM Collaboration WHERE id = ?", [id]);
-    if (invites.length === 0) return res.status(404).json({ error: "Invitation not found" });
-    if (invites[0].collaboratedWithId !== req.user.id) {
-      return res.status(403).json({ error: "This invitation is not for you" });
-    }
     await db_default.query("UPDATE Collaboration SET status = ? WHERE id = ?", ["accepted", id]);
     const [rows] = await db_default.query("SELECT * FROM Collaboration WHERE id = ?", [id]);
     res.json(rows[0]);
@@ -475,21 +411,8 @@ var updateUser = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Only admins can update users" });
     }
-    // Validate role value
-    if (!role || !["admin", "member"].includes(role)) {
-      return res.status(400).json({ error: "Role must be 'admin' or 'member'" });
-    }
-    // Prevent admin from changing their own role (lockout protection)
-    if (id === req.user.id) {
-      return res.status(400).json({ error: "You cannot change your own role" });
-    }
-    // Verify user exists
-    const [targetUsers] = await db_default.query("SELECT id FROM User WHERE id = ?", [id]);
-    if (targetUsers.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
     await db_default.query("UPDATE User SET role = ? WHERE id = ?", [role, id]);
-    res.json({ message: "User role updated successfully" });
+    res.json({ message: "User updated successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error" });
@@ -498,13 +421,6 @@ var updateUser = async (req, res) => {
 var deleteCollaboration = async (req, res) => {
   try {
     const { id } = req.params;
-    // Only the sender or receiver can delete a collaboration
-    const [invites] = await db_default.query("SELECT * FROM Collaboration WHERE id = ?", [id]);
-    if (invites.length === 0) return res.status(404).json({ error: "Collaboration not found" });
-    const invite = invites[0];
-    if (invite.userId !== req.user.id && invite.collaboratedWithId !== req.user.id && req.user.role !== "admin") {
-      return res.status(403).json({ error: "You are not authorized to remove this collaboration" });
-    }
     await db_default.query("DELETE FROM Collaboration WHERE id = ?", [id]);
     res.json({ message: "Collaboration removed successfully" });
   } catch (error) {
@@ -518,16 +434,6 @@ var deleteUser = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Only admins can delete users" });
     }
-    // Prevent admin from deleting themselves
-    if (id === req.user.id) {
-      return res.status(400).json({ error: "You cannot delete your own account" });
-    }
-    const [targetUsers] = await db_default.query("SELECT id FROM User WHERE id = ?", [id]);
-    if (targetUsers.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    await db_default.query("DELETE FROM Collaboration WHERE userId = ? OR collaboratedWithId = ?", [id, id]);
-    await db_default.query("UPDATE Task SET assignedToId = NULL WHERE assignedToId = ?", [id]);
     await db_default.query("DELETE FROM User WHERE id = ?", [id]);
     res.json({ message: "User deleted successfully" });
   } catch (error) {
