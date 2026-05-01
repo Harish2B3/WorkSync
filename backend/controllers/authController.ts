@@ -47,6 +47,7 @@ export const signup = async (req: Request, res: Response) => {
     );
 
     await sendOtpEmail(email, otp);
+    console.log(`[AUTH] STEP 1: OTP requested for ${email}. Account NOT created yet.`);
 
     res.status(200).json({ message: 'OTP sent to email', email });
   } catch (error) {
@@ -92,6 +93,7 @@ export const verifySignup = async (req: Request, res: Response) => {
       'INSERT INTO User (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
       [id, name, email, hashedPassword, userRole]
     );
+    console.log(`[AUTH] STEP 2: Verification successful. User ${email} CREATED in database.`);
 
     const token = jwt.sign({ id, email, role: userRole, name }, JWT_SECRET, { expiresIn: '1d' });
 

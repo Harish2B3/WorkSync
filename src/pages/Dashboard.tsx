@@ -76,6 +76,7 @@ export function Dashboard() {
     }
   };
 
+
   if (!isLoaded) return <Layout><div className="pt-20 text-center text-gray-400 font-medium italic animate-pulse">Preparing your dashboard...</div></Layout>;
 
   if (user?.role === 'member') {

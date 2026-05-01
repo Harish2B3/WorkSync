@@ -39,6 +39,13 @@ export function Layout({children}: {children: ReactNode}) {
     {path: '/settings', label: 'Settings', icon: Settings},
   ];
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   return (
     <div className="app-container flex overflow-hidden border border-white/40 shadow-2xl h-screen">
       {/* Sidebar */}
@@ -129,7 +136,7 @@ export function Layout({children}: {children: ReactNode}) {
         {location.pathname === '/dashboard' && (
           <header className="flex justify-between items-center mb-10">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-1">Good morning, {(user?.name || 'User').split(' ')[0]}!</h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-1">{getGreeting()}, {(user?.name || 'User').split(' ')[0]}!</h2>
               <p className="text-gray-500 text-sm">You have {stats.totalTasks} tasks for today and {stats.weeklyTasks} tasks for this week.</p>
             </div>
             {user?.role === 'admin' && (
