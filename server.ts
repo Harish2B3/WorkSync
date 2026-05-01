@@ -2,17 +2,34 @@ import express from "express";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
-import { signup, login, getMe, updatePassword } from "./backend/controllers/authController";
+import { signup, verifySignup, login, verifyLogin, getMe, updatePassword } from "./backend/controllers/authController";
 import { getProjects, createProject, updateProject, deleteProject } from "./backend/controllers/projectController";
 import { getTasks, createTask, updateTask, deleteTask } from "./backend/controllers/taskController";
 import { getUsers, getCollaborations, createCollaboration, acceptCollaboration, getStats, updateUser, deleteCollaboration, deleteUser } from "./backend/controllers/userController";
 import { authenticateToken, authorizeRole } from "./backend/middleware/auth";
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '5000', 10);
+
+// Rate limiting
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { error: "Too many requests from this IP, please try again after 15 minutes" }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // Limit each IP to 20 auth requests per hour
+  message: { error: "Too many authentication attempts, please try again later" }
+});
+
+app.use(generalLimiter);
+app.use("/api/auth", authLimiter);
 
 app.use(cors());
 app.use(express.json());
@@ -21,7 +38,9 @@ app.use(express.json());
 
 // Auth
 app.post("/api/auth/signup", signup);
+app.post("/api/auth/verify-signup", verifySignup);
 app.post("/api/auth/login", login);
+app.post("/api/auth/verify-login", verifyLogin);
 app.get("/api/auth/me", authenticateToken, getMe);
 app.put("/api/auth/password", authenticateToken, updatePassword);
 

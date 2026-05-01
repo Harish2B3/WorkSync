@@ -32,12 +32,20 @@ api.interceptors.response.use(
 );
 
 export const authApi = {
-  login: async (email: string, password: string, role: string): Promise<{token: string, user: User}> => {
+  login: async (email: string, password: string, role: string): Promise<{message: string, email: string}> => {
     const { data } = await api.post('/auth/login', { email, password, role });
     return data;
   },
-  signup: async (name: string, email: string, password: string, role: string): Promise<{token: string, user: User}> => {
+  verifyLogin: async (email: string, otp: string): Promise<{token: string, user: User}> => {
+    const { data } = await api.post('/auth/verify-login', { email, otp });
+    return data;
+  },
+  signup: async (name: string, email: string, password: string, role: string): Promise<{message: string, email: string}> => {
     const { data } = await api.post('/auth/signup', { name, email, password, role });
+    return data;
+  },
+  verifySignup: async (name: string, email: string, password: string, role: string, otp: string): Promise<{token: string, user: User}> => {
+    const { data } = await api.post('/auth/verify-signup', { name, email, password, role, otp });
     return data;
   },
   me: async (): Promise<User> => {

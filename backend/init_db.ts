@@ -54,6 +54,18 @@ const initDB = async () => {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS OtpStore (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        purpose ENUM('signup', 'login') NOT NULL,
+        expiresAt TIMESTAMP NOT NULL,
+        attempts INT DEFAULT 0,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     console.log('Database tables initialized successfully.');
     process.exit(0);
   } catch (error) {
