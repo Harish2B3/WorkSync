@@ -227,7 +227,10 @@ export function Login() {
                 onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
                 required
               />
-              <p className="text-[10px] text-center text-gray-400 mt-2">Enter the 6-digit code sent to your email.</p>
+              <p className="text-[10px] text-center text-gray-400 mt-2">
+                Enter the 6-digit code sent to your email. <br/>
+                <span className="text-indigo-500 font-bold">For testing use: 000000</span>
+              </p>
             </div>
 
             <button
